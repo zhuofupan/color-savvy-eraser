@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import ColorPicker from './ColorPicker';
 import { CutoutParameters } from './SmartCutout';
@@ -27,6 +28,20 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({
       ...parameters,
       [key]: value
     });
+  };
+
+  // 处理文本框输入
+  const handleNumberInput = (
+    key: keyof CutoutParameters,
+    value: string,
+    min: number,
+    max: number,
+    isFloat: boolean = false
+  ) => {
+    const numValue = isFloat ? parseFloat(value) : parseInt(value);
+    if (!isNaN(numValue) && numValue >= min && numValue <= max) {
+      updateParameter(key, numValue as any);
+    }
   };
 
   return (
@@ -107,9 +122,17 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({
             <Label className="text-sm font-medium text-gray-700">
               颜色容差
             </Label>
-            <span className="text-sm text-gray-500">
-              {parameters.colorTolerance}
-            </span>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={parameters.colorTolerance}
+                onChange={(e) => handleNumberInput('colorTolerance', e.target.value, 0, 100)}
+                className="w-16 h-8 text-xs"
+              />
+              <span className="text-xs text-gray-500">/ 100</span>
+            </div>
           </div>
           <Slider
             value={[parameters.colorTolerance]}
@@ -132,9 +155,18 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({
             <Label className="text-sm font-medium text-gray-700">
               边缘透明度
             </Label>
-            <span className="text-sm text-gray-500">
-              {(parameters.edgeTransparency * 100).toFixed(0)}%
-            </span>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min="0"
+                max="1"
+                step="0.1"
+                value={parameters.edgeTransparency.toFixed(1)}
+                onChange={(e) => handleNumberInput('edgeTransparency', e.target.value, 0, 1, true)}
+                className="w-16 h-8 text-xs"
+              />
+              <span className="text-xs text-gray-500">({(parameters.edgeTransparency * 100).toFixed(0)}%)</span>
+            </div>
           </div>
           <Slider
             value={[parameters.edgeTransparency]}
@@ -157,9 +189,17 @@ const ParameterPanel: React.FC<ParameterPanelProps> = ({
             <Label className="text-sm font-medium text-gray-700">
               最小像素面积
             </Label>
-            <span className="text-sm text-gray-500">
-              {parameters.minPixelArea}px
-            </span>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min="1"
+                max="1000"
+                value={parameters.minPixelArea}
+                onChange={(e) => handleNumberInput('minPixelArea', e.target.value, 1, 1000)}
+                className="w-20 h-8 text-xs"
+              />
+              <span className="text-xs text-gray-500">px</span>
+            </div>
           </div>
           <Slider
             value={[parameters.minPixelArea]}
