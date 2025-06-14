@@ -7,10 +7,13 @@ const Index = () => {
       <div className="container mx-auto py-8">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
-            智能抠图工具
+            AI 智能抠图工具
           </h1>
-          <p className="text-lg text-gray-600">
-            基于PaddleSeg技术的专业背景去除工具，支持纯色背景智能识别与精确抠图
+          <p className="text-lg text-gray-600 mb-2">
+            基于 Hugging Face Transformers.js 的专业背景移除工具
+          </p>
+          <p className="text-sm text-gray-500">
+            支持 AI 智能抠图和传统算法抠图，提供高质量的背景去除效果
           </p>
         </div>
         <SmartCutout />

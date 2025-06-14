@@ -3,12 +3,12 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Upload, Download, RotateCcw, Image as ImageIcon } from "lucide-react";
+import { Upload, Download, RotateCcw, Image as ImageIcon, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import ParameterPanel from './ParameterPanel';
 import PreviewCanvas from './PreviewCanvas';
-import ColorPicker from './ColorPicker';
 import { detectBackgroundColor, processImage } from '@/utils/imageProcessor';
+import { removeBackgroundWithAI } from '@/utils/aiBackgroundRemover';
 
 export interface CutoutParameters {
   enableR: boolean;
@@ -35,6 +35,7 @@ const SmartCutout = () => {
     backgroundColor: '#ffffff'
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMethod, setProcessingMethod] = useState<'traditional' | 'ai'>('ai');
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -67,7 +68,27 @@ const SmartCutout = () => {
     img.src = URL.createObjectURL(file);
   }, []);
 
-  const handleProcess = useCallback(async () => {
+  const handleAIProcess = useCallback(async () => {
+    if (!originalImage) {
+      toast.error('请先上传图片');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      toast.info('正在使用 AI 模型处理，首次使用需要下载模型，请耐心等待...');
+      const result = await removeBackgroundWithAI(originalImage);
+      setProcessedImage(result);
+      toast.success('AI 抠图处理完成');
+    } catch (error) {
+      console.error('AI 处理错误:', error);
+      toast.error('AI 处理失败，请重试或使用传统方法');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [originalImage]);
+
+  const handleTraditionalProcess = useCallback(async () => {
     if (!originalImage) {
       toast.error('请先上传图片');
       return;
@@ -77,9 +98,9 @@ const SmartCutout = () => {
     try {
       const result = await processImage(originalImage, parameters);
       setProcessedImage(result);
-      toast.success('抠图处理完成');
+      toast.success('传统抠图处理完成');
     } catch (error) {
-      console.error('处理错误:', error);
+      console.error('传统处理错误:', error);
       toast.error('处理失败，请重试');
     } finally {
       setIsProcessing(false);
@@ -149,12 +170,21 @@ const SmartCutout = () => {
           </div>
           
           <Button
-            onClick={handleProcess}
+            onClick={handleAIProcess}
+            disabled={!originalImage || isProcessing}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            {isProcessing && processingMethod === 'ai' ? 'AI处理中...' : 'AI智能抠图'}
+          </Button>
+          
+          <Button
+            onClick={handleTraditionalProcess}
             disabled={!originalImage || isProcessing}
             className="bg-green-600 hover:bg-green-700"
           >
             <ImageIcon className="w-4 h-4 mr-2" />
-            {isProcessing ? '处理中...' : '开始抠图'}
+            {isProcessing && processingMethod === 'traditional' ? '处理中...' : '传统抠图'}
           </Button>
           
           <Button
