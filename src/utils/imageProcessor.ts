@@ -1,4 +1,3 @@
-
 import { CutoutParameters } from '@/components/SmartCutout';
 
 // 检测图像的主要背景色
@@ -192,11 +191,116 @@ const floodFill = (
   return region;
 };
 
+// 检查像素是否匹配目标颜色
+const isPixelMatchingColor = (
+  data: Uint8ClampedArray,
+  index: number,
+  targetColor: [number, number, number],
+  tolerance: number,
+  enabledChannels: { r: boolean; g: boolean; b: boolean }
+): boolean => {
+  const pixelIndex = index * 4;
+  const pixelR = data[pixelIndex];
+  const pixelG = data[pixelIndex + 1];
+  const pixelB = data[pixelIndex + 2];
+  
+  let diff = 0;
+  let channelCount = 0;
+  
+  if (enabledChannels.r) {
+    diff += Math.pow(pixelR - targetColor[0], 2);
+    channelCount++;
+  }
+  if (enabledChannels.g) {
+    diff += Math.pow(pixelG - targetColor[1], 2);
+    channelCount++;
+  }
+  if (enabledChannels.b) {
+    diff += Math.pow(pixelB - targetColor[2], 2);
+    channelCount++;
+  }
+  
+  if (channelCount === 0) return false;
+  
+  diff = Math.sqrt(diff / channelCount);
+  return diff <= tolerance;
+};
+
+// 内部背景色块检测和移除
+const removeInternalBackgroundBlocks = (
+  data: Uint8ClampedArray,
+  outputData: Uint8ClampedArray,
+  width: number,
+  height: number,
+  targetColor: [number, number, number],
+  tolerance: number,
+  minPixelArea: number,
+  enabledChannels: { r: boolean; g: boolean; b: boolean }
+): void => {
+  const processed = new Array(width * height).fill(false);
+  
+  console.log('开始检测内部背景色块...');
+  
+  // 遍历所有未被透明化的像素
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = y * width + x;
+      
+      // 跳过已处理的像素或已透明的像素
+      if (processed[index] || outputData[index * 4 + 3] === 0) {
+        continue;
+      }
+      
+      // 检查当前像素是否匹配背景色
+      if (isPixelMatchingColor(data, index, targetColor, tolerance, enabledChannels)) {
+        // 进行洪水填充找到连通区域
+        const region = floodFill(
+          data,
+          width,
+          height,
+          x,
+          y,
+          targetColor,
+          tolerance,
+          enabledChannels
+        );
+        
+        // 计算区域大小
+        const regionSize = region.filter(Boolean).length;
+        console.log(`发现内部背景色块，大小: ${regionSize} 像素`);
+        
+        // 如果区域大小满足最小面积要求，则移除
+        if (regionSize >= minPixelArea) {
+          region.forEach((shouldRemove, i) => {
+            if (shouldRemove) {
+              outputData[i * 4 + 3] = 0; // 设置为透明
+              processed[i] = true;
+            }
+          });
+          console.log(`移除了大小为 ${regionSize} 的内部背景色块`);
+        } else {
+          // 标记为已处理但不移除
+          region.forEach((pixel, i) => {
+            if (pixel) {
+              processed[i] = true;
+            }
+          });
+          console.log(`保留了大小为 ${regionSize} 的小色块（小于最小面积）`);
+        }
+      }
+    }
+  }
+  
+  console.log('内部背景色块检测完成');
+};
+
 // 主要的图像处理函数
 export const processImage = async (
   image: HTMLImageElement,
   parameters: CutoutParameters
 ): Promise<HTMLCanvasElement> => {
+  console.log('开始图像处理...');
+  
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   
@@ -217,7 +321,10 @@ export const processImage = async (
     b: parameters.enableB
   };
   
-  // 创建标记数组，记录哪些像素需要被移除
+  console.log('目标背景色:', parameters.backgroundColor, `RGB(${targetR}, ${targetG}, ${targetB})`);
+  console.log('启用的通道:', enabledChannels);
+  
+  // 第一步：边缘抠图 - 创建标记数组，记录哪些像素需要被移除
   const toRemove = new Array(canvas.width * canvas.height).fill(false);
   const processed = new Array(canvas.width * canvas.height).fill(false);
   
@@ -232,38 +339,14 @@ export const processImage = async (
     edgePixels.push([0, y], [canvas.width - 1, y]);
   }
   
+  console.log('开始边缘抠图...');
+  
   // 对每个边缘像素进行洪水填充
   edgePixels.forEach(([x, y]) => {
     const index = y * canvas.width + x;
     if (processed[index]) return;
     
-    const pixelIndex = index * 4;
-    const pixelR = data[pixelIndex];
-    const pixelG = data[pixelIndex + 1];
-    const pixelB = data[pixelIndex + 2];
-    
-    // 检查是否匹配目标颜色
-    let diff = 0;
-    let channelCount = 0;
-    
-    if (enabledChannels.r) {
-      diff += Math.pow(pixelR - targetR, 2);
-      channelCount++;
-    }
-    if (enabledChannels.g) {
-      diff += Math.pow(pixelG - targetG, 2);
-      channelCount++;
-    }
-    if (enabledChannels.b) {
-      diff += Math.pow(pixelB - targetB, 2);
-      channelCount++;
-    }
-    
-    if (channelCount === 0) return;
-    
-    diff = Math.sqrt(diff / channelCount);
-    
-    if (diff <= parameters.colorTolerance) {
+    if (isPixelMatchingColor(data, index, [targetR, targetG, targetB], parameters.colorTolerance, enabledChannels)) {
       // 进行洪水填充
       const region = floodFill(
         data,
@@ -291,7 +374,7 @@ export const processImage = async (
     }
   });
   
-  // 应用移除标记，设置透明度
+  // 应用边缘移除标记
   for (let i = 0; i < toRemove.length; i++) {
     if (toRemove[i]) {
       const pixelIndex = i * 4;
@@ -299,15 +382,32 @@ export const processImage = async (
     }
   }
   
-  // 应用边缘透明度（羽化效果）
+  console.log('边缘抠图完成');
+  
+  // 第二步：内部背景色块检测和移除
+  removeInternalBackgroundBlocks(
+    data,
+    outputData,
+    canvas.width,
+    canvas.height,
+    [targetR, targetG, targetB],
+    parameters.colorTolerance,
+    parameters.minPixelArea,
+    enabledChannels
+  );
+  
+  // 第三步：应用边缘透明度（羽化效果）
   if (parameters.edgeTransparency < 1) {
+    console.log('应用边缘羽化效果...');
     const edgeDistance = 3; // 羽化范围
     
     for (let y = 0; y < canvas.height; y++) {
       for (let x = 0; x < canvas.width; x++) {
         const index = y * canvas.width + x;
+        const pixelIndex = index * 4;
         
-        if (!toRemove[index]) {
+        // 只对不透明的像素应用羽化
+        if (outputData[pixelIndex + 3] > 0) {
           // 检查周围是否有被移除的像素
           let nearEdge = false;
           let minDistance = edgeDistance;
@@ -319,7 +419,8 @@ export const processImage = async (
               
               if (nx >= 0 && nx < canvas.width && ny >= 0 && ny < canvas.height) {
                 const nIndex = ny * canvas.width + nx;
-                if (toRemove[nIndex]) {
+                const nPixelIndex = nIndex * 4;
+                if (outputData[nPixelIndex + 3] === 0) {
                   const distance = Math.sqrt(dx * dx + dy * dy);
                   if (distance < minDistance) {
                     minDistance = distance;
@@ -331,7 +432,6 @@ export const processImage = async (
           }
           
           if (nearEdge) {
-            const pixelIndex = index * 4;
             const edgeFactor = minDistance / edgeDistance;
             const alpha = Math.floor(
               outputData[pixelIndex + 3] * 
@@ -356,5 +456,6 @@ export const processImage = async (
   const outputImageData = new ImageData(outputData, canvas.width, canvas.height);
   outputCtx.putImageData(outputImageData, 0, 0);
   
+  console.log('图像处理完成');
   return outputCanvas;
 };
